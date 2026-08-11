@@ -8,6 +8,20 @@
       "when": 1786423230822,
       "tag": "0000_legal_thor",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786460731272,
+      "tag": "0001_oval_betty_brant",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786460734156,
+      "tag": "0002_stock_trigger",
+      "breakpoints": true
     }
   ]
 }
