@@ -102,13 +102,3 @@ export const agentsLog = pgTable('agents_log', {
   result: text('result'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
-
-export const transactions = pgTable('transactions', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  type: text('type').notNull(),
-  category: text('category'),
-  amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
-  description: text('description'),
-  relatedOrderId: uuid('related_order_id').references(() => orders.id),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-});

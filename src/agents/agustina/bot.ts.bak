@@ -8,19 +8,13 @@ if (!token) {
 }
 
 const API = 'http://127.0.0.1:3000';
-const API_SECRET = process.env.API_SECRET || '';
 const bot = new Bot(token);
 
-function apiFetch(path: string, opts: any = {}) {
-  const headers = Object.assign({ 'x-api-key': API_SECRET }, opts.headers || {});
-  return fetch(`${API}${path}`, { ...opts, headers });
-}
-
 bot.command('start', (ctx) => ctx.reply('Hola! Soy Agustina. Mandame /vender para registrar una venta, o /stock para ver el stock actual.'));
-bot.command('ayuda', (ctx) => ctx.reply('Comandos:\n/vender - registrar una venta\n/stock - ver stock actual\n/reponer - sumar stock\n/baja CODIGO - dar de baja un producto\n/aprobar - revisar contenido pendiente\n/clientes - ver clientes\n/ingreso MONTO descripcion - registrar un ingreso manual\n/egreso MONTO descripcion - registrar un egreso'));
+bot.command('ayuda', (ctx) => ctx.reply('Comandos:\n/vender - registrar una venta\n/stock - ver stock actual'));
 
 bot.command('vender', async (ctx) => {
-  const res = await apiFetch('/products');
+  const res = await fetch(`${API}/products`);
   const items = await res.json();
   const active = items.filter((p: any) => p.status === 'active');
   if (!active.length) return ctx.reply('No hay productos cargados todavia.');
@@ -30,7 +24,7 @@ bot.command('vender', async (ctx) => {
 });
 
 bot.command('stock', async (ctx) => {
-  const res = await apiFetch('/products');
+  const res = await fetch(`${API}/products`);
   const items = await res.json();
   const lines = items.map((p: any) => `${p.code ?? '?'} - ${p.name}: ${p.stockQuantity} unidades`);
   await ctx.reply(lines.join('\n') || 'Sin productos cargados.');
@@ -38,7 +32,7 @@ bot.command('stock', async (ctx) => {
 
 bot.callbackQuery(/^prod:(.+)$/, async (ctx) => {
   const productId = ctx.match[1];
-  const res = await apiFetch(`/products/${productId}/variants`);
+  const res = await fetch(`${API}/products/${productId}/variants`);
   const variants = await res.json();
   await ctx.answerCallbackQuery();
   if (!variants.length) return ctx.reply('Ese producto no tiene talles cargados.');
@@ -58,9 +52,9 @@ bot.callbackQuery(/^size:(.+):(.+)$/, async (ctx) => {
 bot.callbackQuery(/^qty:(.+):(.+):(\d+)$/, async (ctx) => {
   const [, productId, variantId, qtyStr] = ctx.match;
   const quantity = parseInt(qtyStr, 10);
-  const product = await (await apiFetch(`/products/${productId}`)).json();
+  const product = await (await fetch(`${API}/products/${productId}`)).json();
   const unitPrice = Number(product.price ?? 0);
-  const orderRes = await apiFetch('/orders', {
+  const orderRes = await fetch(`${API}/orders`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ channel: 'in_person', items: [{ productId, productVariantId: variantId, quantity, unitPrice }] }),
@@ -71,7 +65,7 @@ bot.callbackQuery(/^qty:(.+):(.+):(\d+)$/, async (ctx) => {
 });
 
 bot.command('reponer', async (ctx) => {
-  const res = await apiFetch('/products');
+  const res = await fetch(`${API}/products`);
   const items = await res.json();
   if (!items.length) return ctx.reply('No hay productos cargados todavia.');
   const kb = new InlineKeyboard();
@@ -82,7 +76,7 @@ bot.command('reponer', async (ctx) => {
 bot.callbackQuery(/^rprod:(.+)$/, async (ctx) => {
   const productId = ctx.match[1];
   await ctx.answerCallbackQuery();
-  const variants = await (await apiFetch(`/products/${productId}/variants`)).json();
+  const variants = await (await fetch(`${API}/products/${productId}/variants`)).json();
   const kb = new InlineKeyboard();
   const known = new Set(variants.map((v: any) => v.size));
   for (const v of variants) kb.text(`${v.size} (${v.stockQuantity} actual)`, `rsize:${productId}:${v.size}`).row();
@@ -101,7 +95,7 @@ bot.callbackQuery(/^rsize:(.+):(.+)$/, async (ctx) => {
 bot.callbackQuery(/^rqty:(.+):(.+):(\d+)$/, async (ctx) => {
   const [, productId, size, qtyStr] = ctx.match;
   const quantity = parseInt(qtyStr, 10);
-  const res = await apiFetch(`/products/${productId}/restock`, {
+  const res = await fetch(`${API}/products/${productId}/restock`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ size, quantity }),
   });
@@ -113,10 +107,10 @@ bot.callbackQuery(/^rqty:(.+):(.+):(\d+)$/, async (ctx) => {
 bot.command('baja', async (ctx) => {
   const code = (ctx.match as string || '').trim();
   if (!code) return ctx.reply('Uso: /baja CODIGO');
-  const items = await (await apiFetch('/products')).json();
+  const items = await (await fetch(`${API}/products`)).json();
   const product = items.find((p: any) => p.code === code);
   if (!product) return ctx.reply(`No encontre el producto con codigo ${code}.`);
-  await apiFetch(`/products/${product.id}`, {
+  await fetch(`${API}/products/${product.id}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status: 'inactive' }),
   });
@@ -124,7 +118,7 @@ bot.command('baja', async (ctx) => {
 });
 
 bot.command('aprobar', async (ctx) => {
-  const items = await (await apiFetch('/content?status=pending_approval')).json();
+  const items = await (await fetch(`${API}/content?status=pending_approval`)).json();
   if (!items.length) return ctx.reply('No hay contenido pendiente de aprobacion.');
   for (const c of items) {
     const kb = new InlineKeyboard().text('Aprobar', `capr:${c.id}`).text('Rechazar', `crej:${c.id}`);
@@ -136,7 +130,7 @@ bot.command('aprobar', async (ctx) => {
 bot.callbackQuery(/^capr:(.+)$/, async (ctx) => {
   const id = ctx.match[1];
   const approver = ctx.from?.first_name || ctx.from?.username || 'operador';
-  await apiFetch(`/content/${id}`, {
+  await fetch(`${API}/content/${id}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status: 'approved', approvedBy: approver }),
   });
@@ -147,7 +141,7 @@ bot.callbackQuery(/^capr:(.+)$/, async (ctx) => {
 bot.callbackQuery(/^crej:(.+)$/, async (ctx) => {
   const id = ctx.match[1];
   const approver = ctx.from?.first_name || ctx.from?.username || 'operador';
-  await apiFetch(`/content/${id}`, {
+  await fetch(`${API}/content/${id}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status: 'rejected', approvedBy: approver }),
   });
@@ -156,40 +150,10 @@ bot.callbackQuery(/^crej:(.+)$/, async (ctx) => {
 });
 
 bot.command('clientes', async (ctx) => {
-  const items = await (await apiFetch('/clients')).json();
+  const items = await (await fetch(`${API}/clients`)).json();
   if (!items.length) return ctx.reply('No hay clientes cargados todavia.');
   const lines = items.map((c: any) => `${c.name || '(sin nombre)'} - ${c.phone || c.instagramHandle || 's/contacto'}`);
   await ctx.reply(lines.join('\n'));
-});
-
-function parseMontoDescripcion(text: string) {
-  const trimmed = (text || '').trim();
-  const match = trimmed.match(/^(\d+(?:[.,]\d+)?)\s*(.*)$/);
-  if (!match) return null;
-  const amount = Number(match[1].replace(',', '.'));
-  const description = match[2].trim();
-  if (!amount || amount <= 0) return null;
-  return { amount, description };
-}
-
-bot.command('egreso', async (ctx) => {
-  const parsed = parseMontoDescripcion(ctx.match as string);
-  if (!parsed) return ctx.reply('Uso: /egreso MONTO descripcion (ej: /egreso 5000 envio correo)');
-  await apiFetch('/transactions', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type: 'expense', category: 'manual', amount: parsed.amount, description: parsed.description || 'Egreso manual' }),
-  });
-  await ctx.reply(`Egreso registrado: $${parsed.amount}${parsed.description ? ' - ' + parsed.description : ''}`);
-});
-
-bot.command('ingreso', async (ctx) => {
-  const parsed = parseMontoDescripcion(ctx.match as string);
-  if (!parsed) return ctx.reply('Uso: /ingreso MONTO descripcion (ej: /ingreso 15000 seña cliente)');
-  await apiFetch('/transactions', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type: 'income', category: 'manual', amount: parsed.amount, description: parsed.description || 'Ingreso manual' }),
-  });
-  await ctx.reply(`Ingreso registrado: $${parsed.amount}${parsed.description ? ' - ' + parsed.description : ''}`);
 });
 
 bot.start();
