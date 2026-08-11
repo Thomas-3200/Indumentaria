@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import 'dotenv/config';
 import { eq, and } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { suppliers, products, productVariants, orders, orderItems, contentCalendar } from '../db/schema.js';
+import { suppliers, products, productVariants, orders, orderItems, contentCalendar, clients, conversations, messages } from '../db/schema.js';
 
 const app = Fastify({ logger: true });
 
@@ -129,6 +129,58 @@ app.patch('/content/:id', async (req) => {
   if (b.approvedBy !== undefined) { updates.approvedBy = b.approvedBy; updates.approvedAt = new Date(); }
   const [row] = await db.update(contentCalendar).set(updates).where(eq(contentCalendar.id, id)).returning();
   return row;
+});
+
+app.post('/clients', async (req) => {
+  const b = req.body as any;
+  const [row] = await db.insert(clients).values({
+    name: b.name, phone: b.phone, instagramHandle: b.instagramHandle, sourceChannel: b.sourceChannel, notes: b.notes,
+  }).returning();
+  return row;
+});
+app.get('/clients', async () => db.select().from(clients));
+app.get('/clients/:id', async (req) => {
+  const { id } = req.params as any;
+  const [row] = await db.select().from(clients).where(eq(clients.id, id));
+  return row;
+});
+app.patch('/clients/:id', async (req) => {
+  const { id } = req.params as any;
+  const b = req.body as any;
+  const updates: any = {};
+  for (const k of ['name', 'phone', 'instagramHandle', 'sourceChannel', 'notes']) if (b[k] !== undefined) updates[k] = b[k];
+  const [row] = await db.update(clients).set(updates).where(eq(clients.id, id)).returning();
+  return row;
+});
+
+app.post('/conversations', async (req) => {
+  const b = req.body as any;
+  const [row] = await db.insert(conversations).values({
+    clientId: b.clientId, channel: b.channel, status: b.status ?? 'open', lastMessageAt: new Date(),
+  }).returning();
+  return row;
+});
+app.get('/conversations', async (req) => {
+  const { clientId, status } = req.query as any;
+  let rows = await db.select().from(conversations);
+  if (clientId) rows = rows.filter((r) => r.clientId === clientId);
+  if (status) rows = rows.filter((r) => r.status === status);
+  return rows;
+});
+
+app.post('/conversations/:id/messages', async (req) => {
+  const { id } = req.params as any;
+  const b = req.body as any;
+  const [row] = await db.insert(messages).values({
+    conversationId: id, direction: b.direction, contentType: b.contentType ?? 'text',
+    content: b.content, mediaUrl: b.mediaUrl, generatedByAgent: b.generatedByAgent ?? false,
+  }).returning();
+  await db.update(conversations).set({ lastMessageAt: new Date(), status: b.status ?? 'open' }).where(eq(conversations.id, id));
+  return row;
+});
+app.get('/conversations/:id/messages', async (req) => {
+  const { id } = req.params as any;
+  return db.select().from(messages).where(eq(messages.conversationId, id));
 });
 
 const port = Number(process.env.PORT || 3000);

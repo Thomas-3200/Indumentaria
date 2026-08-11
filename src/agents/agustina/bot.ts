@@ -149,5 +149,12 @@ bot.callbackQuery(/^crej:(.+)$/, async (ctx) => {
   await ctx.editMessageText(`RECHAZADO por ${approver}`);
 });
 
+bot.command('clientes', async (ctx) => {
+  const items = await (await fetch(`${API}/clients`)).json();
+  if (!items.length) return ctx.reply('No hay clientes cargados todavia.');
+  const lines = items.map((c: any) => `${c.name || '(sin nombre)'} - ${c.phone || c.instagramHandle || 's/contacto'}`);
+  await ctx.reply(lines.join('\n'));
+});
+
 bot.start();
 console.log('Agustina (bot Telegram) escuchando...');
