@@ -8,7 +8,6 @@ const app = Fastify({ logger: true });
 
 app.get('/health', async () => ({ status: 'ok' }));
 
-// Proveedores
 app.post('/suppliers', async (req) => {
   const b = req.body as any;
   const [row] = await db.insert(suppliers).values({
@@ -18,7 +17,6 @@ app.post('/suppliers', async (req) => {
 });
 app.get('/suppliers', async () => db.select().from(suppliers));
 
-// Productos
 app.post('/products', async (req) => {
   const b = req.body as any;
   const [row] = await db.insert(products).values({
@@ -36,12 +34,16 @@ app.post('/products', async (req) => {
   return row;
 });
 app.get('/products', async () => db.select().from(products));
+app.get('/products/:id', async (req) => {
+  const { id } = req.params as any;
+  const [row] = await db.select().from(products).where(eq(products.id, id));
+  return row;
+});
 app.get('/products/:id/variants', async (req) => {
   const { id } = req.params as any;
   return db.select().from(productVariants).where(eq(productVariants.productId, id));
 });
 
-// Ventas — registrar acá dispara el trigger automatico de stock
 app.post('/orders', async (req) => {
   const b = req.body as any;
   const total = b.items.reduce((s: number, it: any) => s + it.quantity * it.unitPrice, 0);
