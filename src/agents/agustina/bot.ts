@@ -64,5 +64,58 @@ bot.callbackQuery(/^qty:(.+):(.+):(\d+)$/, async (ctx) => {
   await ctx.reply(`Listo! Registre ${quantity} unidad(es) de ${product.name}. Total: $${order.total}`);
 });
 
+bot.command('reponer', async (ctx) => {
+  const res = await fetch(`${API}/products`);
+  const items = await res.json();
+  if (!items.length) return ctx.reply('No hay productos cargados todavia.');
+  const kb = new InlineKeyboard();
+  for (const p of items) kb.text(`${p.name} (${p.code ?? 's/c'})`, `rprod:${p.id}`).row();
+  await ctx.reply('A que producto le entra mercaderia?', { reply_markup: kb });
+});
+
+bot.callbackQuery(/^rprod:(.+)$/, async (ctx) => {
+  const productId = ctx.match[1];
+  await ctx.answerCallbackQuery();
+  const variants = await (await fetch(`${API}/products/${productId}/variants`)).json();
+  const kb = new InlineKeyboard();
+  const known = new Set(variants.map((v: any) => v.size));
+  for (const v of variants) kb.text(`${v.size} (${v.stockQuantity} actual)`, `rsize:${productId}:${v.size}`).row();
+  for (const s of ['S', 'M', 'L', 'XL']) if (!known.has(s)) kb.text(`${s} (nuevo talle)`, `rsize:${productId}:${s}`).row();
+  await ctx.reply('Que talle repone?', { reply_markup: kb });
+});
+
+bot.callbackQuery(/^rsize:(.+):(.+)$/, async (ctx) => {
+  const [, productId, size] = ctx.match;
+  await ctx.answerCallbackQuery();
+  const kb = new InlineKeyboard();
+  for (const n of [1, 5, 10, 20, 50]) kb.text(`+${n}`, `rqty:${productId}:${size}:${n}`);
+  await ctx.reply('Cuantas unidades entraron?', { reply_markup: kb });
+});
+
+bot.callbackQuery(/^rqty:(.+):(.+):(\d+)$/, async (ctx) => {
+  const [, productId, size, qtyStr] = ctx.match;
+  const quantity = parseInt(qtyStr, 10);
+  const res = await fetch(`${API}/products/${productId}/restock`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ size, quantity }),
+  });
+  const data = await res.json();
+  await ctx.answerCallbackQuery({ text: 'Stock repuesto!' });
+  await ctx.reply(`Listo! Sumadas ${quantity} unidades de talle ${size}. Stock nuevo de ese talle: ${data.variant.stockQuantity}. Total del producto: ${data.productStockQuantity}.`);
+});
+
+bot.command('baja', async (ctx) => {
+  const code = (ctx.match as string || '').trim();
+  if (!code) return ctx.reply('Uso: /baja CODIGO');
+  const items = await (await fetch(`${API}/products`)).json();
+  const product = items.find((p: any) => p.code === code);
+  if (!product) return ctx.reply(`No encontre el producto con codigo ${code}.`);
+  await fetch(`${API}/products/${product.id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'inactive' }),
+  });
+  await ctx.reply(`${product.name} (${code}) dado de baja.`);
+});
+
 bot.start();
 console.log('Agustina (bot Telegram) escuchando...');
