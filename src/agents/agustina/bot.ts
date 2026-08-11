@@ -117,5 +117,37 @@ bot.command('baja', async (ctx) => {
   await ctx.reply(`${product.name} (${code}) dado de baja.`);
 });
 
+bot.command('aprobar', async (ctx) => {
+  const items = await (await fetch(`${API}/content?status=pending_approval`)).json();
+  if (!items.length) return ctx.reply('No hay contenido pendiente de aprobacion.');
+  for (const c of items) {
+    const kb = new InlineKeyboard().text('Aprobar', `capr:${c.id}`).text('Rechazar', `crej:${c.id}`);
+    const info = `${c.channel} - ${c.contentType ?? 'post'}\n\n${c.caption ?? '(sin caption)'}\n\n${c.mediaUrl ? 'Media: ' + c.mediaUrl : ''}`;
+    await ctx.reply(info, { reply_markup: kb });
+  }
+});
+
+bot.callbackQuery(/^capr:(.+)$/, async (ctx) => {
+  const id = ctx.match[1];
+  const approver = ctx.from?.first_name || ctx.from?.username || 'operador';
+  await fetch(`${API}/content/${id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'approved', approvedBy: approver }),
+  });
+  await ctx.answerCallbackQuery({ text: 'Aprobado!' });
+  await ctx.editMessageText(`APROBADO por ${approver}`);
+});
+
+bot.callbackQuery(/^crej:(.+)$/, async (ctx) => {
+  const id = ctx.match[1];
+  const approver = ctx.from?.first_name || ctx.from?.username || 'operador';
+  await fetch(`${API}/content/${id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'rejected', approvedBy: approver }),
+  });
+  await ctx.answerCallbackQuery({ text: 'Rechazado' });
+  await ctx.editMessageText(`RECHAZADO por ${approver}`);
+});
+
 bot.start();
 console.log('Agustina (bot Telegram) escuchando...');

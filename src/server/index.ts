@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import 'dotenv/config';
 import { eq, and } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { suppliers, products, productVariants, orders, orderItems } from '../db/schema.js';
+import { suppliers, products, productVariants, orders, orderItems, contentCalendar } from '../db/schema.js';
 
 const app = Fastify({ logger: true });
 
@@ -107,6 +107,29 @@ app.post('/orders', async (req) => {
   return { order };
 });
 app.get('/orders', async () => db.select().from(orders));
+
+app.post('/content', async (req) => {
+  const b = req.body as any;
+  const [row] = await db.insert(contentCalendar).values({
+    channel: b.channel, contentType: b.contentType, mediaUrl: b.mediaUrl, caption: b.caption,
+    status: b.status ?? 'pending_approval', scheduledAt: b.scheduledAt ?? null,
+  }).returning();
+  return row;
+});
+app.get('/content', async (req) => {
+  const { status } = req.query as any;
+  if (status) return db.select().from(contentCalendar).where(eq(contentCalendar.status, status));
+  return db.select().from(contentCalendar);
+});
+app.patch('/content/:id', async (req) => {
+  const { id } = req.params as any;
+  const b = req.body as any;
+  const updates: any = {};
+  for (const k of ['status', 'caption', 'mediaUrl', 'scheduledAt']) if (b[k] !== undefined) updates[k] = b[k];
+  if (b.approvedBy !== undefined) { updates.approvedBy = b.approvedBy; updates.approvedAt = new Date(); }
+  const [row] = await db.update(contentCalendar).set(updates).where(eq(contentCalendar.id, id)).returning();
+  return row;
+});
 
 const port = Number(process.env.PORT || 3000);
 app.listen({ port, host: '127.0.0.1' }).then(() => console.log(`API en puerto ${port}`));
